@@ -1,0 +1,10 @@
+chromadb==0.5.23
+fastapi==0.115.12
+pydantic-settings==2.10.1
+pypdf==5.5.0
+python-dotenv==1.1.0
+python-multipart==0.0.9
+sentence-transformers==3.4.1
+SQLAlchemy==2.0.40
+uvicorn[standard]==0.34.2
+
