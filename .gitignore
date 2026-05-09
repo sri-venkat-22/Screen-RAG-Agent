@@ -5,9 +5,9 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/dist/
+frontend/.wrangler/
 backend/data/app.db
 backend/data/chroma/
 backend/.pytest_cache/
 backend/.mypy_cache/
 .env
-

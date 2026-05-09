@@ -7,6 +7,7 @@ from backend.app.db.session import get_db
 from backend.app.roles import list_roles
 from backend.app.schemas import AnswerResponse, RoleOption, SessionSummary, StartSessionResponse, SubmitAnswerRequest
 from backend.app.services.interview import InterviewService
+from backend.app.services.knowledge import get_knowledge_service
 
 router = APIRouter()
 
@@ -19,6 +20,11 @@ def healthcheck() -> dict[str, str]:
 @router.get("/roles", response_model=list[RoleOption])
 def get_roles() -> list[RoleOption]:
     return [RoleOption(value=role.value, label=role.label, blurb=role.blurb) for role in list_roles()]
+
+
+@router.get("/knowledge/status")
+def knowledge_status() -> dict:
+    return get_knowledge_service().source_status()
 
 
 @router.post("/interviews/sessions", response_model=StartSessionResponse)
@@ -65,4 +71,3 @@ def session_summary(session_id: str, db: Session = Depends(get_db)) -> SessionSu
         message = str(exc)
         status_code = 404 if "not found" in message.lower() else 400
         raise HTTPException(status_code=status_code, detail=message) from exc
-

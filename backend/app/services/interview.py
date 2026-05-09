@@ -21,6 +21,7 @@ from backend.app.schemas import (
 )
 from backend.app.services.analysis import build_session_insights, evaluate_answer
 from backend.app.services.knowledge import get_knowledge_service
+from backend.app.services.question_generation import QuestionComposer
 from backend.app.services.resume import build_resume_profile, extract_resume_text
 
 
@@ -29,6 +30,7 @@ class InterviewService:
         self.db = db
         self.settings = get_settings()
         self.knowledge = get_knowledge_service()
+        self.question_composer = QuestionComposer()
 
     async def start_session(
         self,
@@ -156,16 +158,21 @@ class InterviewService:
             selected = self._choose_primary_source(retrieved, used_topics)
             topic = selected.topic if selected else blueprint.stage.lower()
             used_topics.add(topic)
+            difficulty = self._calibrate_difficulty(role, profile, blueprint)
+            source_mode = "primary" if any(
+                source.metadata.get("source_kind", "").startswith("primary") for source in retrieved
+            ) else "fallback"
             focus_areas.append(
                 {
                     "stage": blueprint.stage,
                     "question_type": blueprint.question_type,
-                    "difficulty": blueprint.difficulty,
+                    "difficulty": difficulty,
+                    "base_difficulty": blueprint.difficulty,
                     "lens": blueprint.lens,
                     "query": query,
                     "topic": topic,
                     "sources": [source.model_dump() for source in retrieved],
-                    "rationale": self._build_rationale(role, profile, blueprint, topic),
+                    "source_mode": source_mode,
                 }
             )
         return {
@@ -184,7 +191,11 @@ class InterviewService:
     ) -> dict:
         next_index = previous_question.index
         planned_focus = plan["focus_areas"][next_index]
-        if evaluation.score >= 45:
+        if evaluation.score >= 80:
+            planned_focus["difficulty"] = self._shift_difficulty(planned_focus["difficulty"], 1)
+            planned_focus["stage"] = f"{blueprint.stage} Stretch"
+            return planned_focus
+        if evaluation.score >= 35:
             return planned_focus
 
         adaptive_query = (
@@ -199,13 +210,12 @@ class InterviewService:
         planned_focus["query"] = adaptive_query
         planned_focus["topic"] = previous_question.focus_topic
         planned_focus["question_type"] = "scenario"
-        planned_focus["difficulty"] = "core"
+        planned_focus["difficulty"] = self._shift_difficulty(previous_question.difficulty, -1)
         planned_focus["stage"] = f"{blueprint.stage} Follow-up"
         planned_focus["sources"] = [source.model_dump() for source in adaptive_sources]
-        planned_focus["rationale"] = (
-            f"Adaptive follow-up on {previous_question.focus_topic} because the previous answer "
-            "needed more grounding and operational detail."
-        )
+        planned_focus["source_mode"] = "primary" if any(
+            source.metadata.get("source_kind", "").startswith("primary") for source in adaptive_sources
+        ) else "fallback"
         return planned_focus
 
     def _generate_question(
@@ -217,10 +227,14 @@ class InterviewService:
     ) -> InterviewQuestion:
         sources = focus["sources"]
         focus_topic = focus["topic"]
-        candidate_anchor = ", ".join(profile.skills[:3] or profile.domains[:2] or ["your recent work"])
         source_keywords = self._source_keywords(sources)
-        prompt = self._compose_prompt(role, focus, candidate_anchor, source_keywords)
-        hint = f"Touch on: {', '.join(source_keywords[:4])}" if source_keywords else None
+        draft = self.question_composer.compose(
+            role=role,
+            profile=profile,
+            focus=focus,
+            question_number=question_number,
+            source_keywords=source_keywords,
+        )
         return InterviewQuestion(
             id=str(uuid4()),
             index=question_number,
@@ -228,68 +242,12 @@ class InterviewService:
             type=focus["question_type"],
             difficulty=focus["difficulty"],
             stage=focus["stage"],
-            prompt=prompt,
-            hint=hint,
+            prompt=draft.prompt,
+            hint=draft.hint,
             focus_topic=focus_topic,
             query=focus["query"],
             sources=sources,
-            rationale=focus["rationale"],
-        )
-
-    def _compose_prompt(
-        self,
-        role: RoleDefinition,
-        focus: dict,
-        candidate_anchor: str,
-        source_keywords: list[str],
-    ) -> str:
-        topic = focus["topic"]
-        keyword_text = ", ".join(source_keywords[:3]) if source_keywords else topic
-        qtype = focus["question_type"]
-        stage = focus["stage"]
-
-        if role.value == "ai-ml":
-            if qtype == "open":
-                return (
-                    f"Your resume points to experience with {candidate_anchor}. In the context of {topic}, "
-                    f"walk me through a project or workflow where you had to make important ML or retrieval "
-                    f"tradeoffs. What did you optimize for, what broke first, and how did you validate the outcome?"
-                )
-            if qtype == "code":
-                return (
-                    f"Design an end-to-end {topic} workflow for an AI/ML interview system. Cover data flow, "
-                    f"component boundaries, failure modes, and how you would implement or pseudocode the parts "
-                    f"related to {keyword_text}."
-                )
-            if qtype == "system":
-                return (
-                    f"Design the production architecture for a role-based screening platform whose critical "
-                    f"decision point is {topic}. Explain how you would keep latency, quality, monitoring, and "
-                    f"traceability under control as usage grows."
-                )
-            return (
-                f"Suppose the {topic} part of your pipeline starts producing weak candidate questions. "
-                f"How would you diagnose the issue using signals around {keyword_text}, and what fixes would you try first?"
-            )
-
-        if qtype == "open":
-            return (
-                f"Your resume highlights {candidate_anchor}. Tell me about a backend problem where {topic} mattered. "
-                f"What was the context, what tradeoffs did you make, and how did you know the solution was working?"
-            )
-        if qtype == "code":
-            return (
-                f"Design or sketch the backend implementation for a feature centered on {topic}. "
-                f"Describe APIs, storage, background work, and how you would handle {keyword_text} under load."
-            )
-        if qtype == "system":
-            return (
-                f"Design the system architecture for a backend service where {topic} is a critical constraint. "
-                f"Walk through scaling, failure recovery, observability, and the operational tradeoffs you would accept."
-            )
-        return (
-            f"Imagine you are on-call and a service tied to {topic} starts failing. In the {stage.lower()} phase, "
-            f"how would you investigate, stabilize, and then prevent the issue from recurring?"
+            rationale=draft.rationale,
         )
 
     def _build_query(
@@ -308,24 +266,54 @@ class InterviewService:
             "production": f"{role.label} production architecture scalability monitoring for {anchor}",
             "service_debugging": f"{role.label} latency debugging database api reliability for {anchor}",
             "reliability": f"{role.label} idempotency consistency observability incident response around {anchor}",
+            "frontend_state": f"{role.label} react rendering state management browser performance around {anchor}",
+            "quality": f"{role.label} quality testing accessibility observability validation around {anchor}",
+            "tradeoffs": f"{role.label} product architecture client server boundaries tradeoffs around {anchor}",
+            "pipeline": f"{role.label} pipeline orchestration data quality lineage around {anchor}",
+            "incident_response": f"{role.label} incident response slo observability rollback around {anchor}",
         }
         return lens_queries.get(
             blueprint.lens,
             f"{role.label} {blueprint.stage.lower()} {anchor}",
         )
 
-    def _build_rationale(
+    def _calibrate_difficulty(
         self,
         role: RoleDefinition,
         profile: ResumeProfile,
         blueprint: QuestionBlueprint,
-        topic: str,
     ) -> str:
-        anchor = ", ".join(profile.skills[:2] or profile.domains[:2] or [role.label])
-        return (
-            f"This {blueprint.stage.lower()} question tests {topic} because the resume suggests strength in "
-            f"{anchor}, and the target role requires grounded reasoning in this area."
+        score = self._role_alignment_score(role, profile)
+        shift = 0
+        if score >= 4:
+            shift = 1
+        elif score <= 1 and blueprint.difficulty in {"deep", "system"}:
+            shift = -1
+        return self._shift_difficulty(blueprint.difficulty, shift)
+
+    def _role_alignment_score(self, role: RoleDefinition, profile: ResumeProfile) -> int:
+        resume_terms = " ".join(
+            profile.skills + profile.technologies + profile.domains + profile.highlights
+        ).lower()
+        topic_hits = 0
+        for topic in role.core_topics:
+            topic_tokens = [token for token in topic.split() if len(token) > 3]
+            if any(token in resume_terms for token in topic_tokens):
+                topic_hits += 1
+        seniority_bonus = {"early-career": 0, "emerging": 1, "intermediate": 2, "advanced": 3}.get(
+            profile.seniority,
+            1,
         )
+        years_bonus = min(profile.experience_years or 0, 5) // 2
+        return topic_hits + seniority_bonus + years_bonus
+
+    def _shift_difficulty(self, difficulty: str, shift: int) -> str:
+        order = ["warmup", "core", "deep", "system"]
+        try:
+            index = order.index(difficulty)
+        except ValueError:
+            return "core"
+        return order[max(0, min(len(order) - 1, index + shift))]
 
     def _source_keywords(self, sources: list[dict]) -> list[str]:
         keywords: list[str] = []

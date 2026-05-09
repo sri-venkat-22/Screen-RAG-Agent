@@ -16,7 +16,11 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'data' / 'app.db').resolve().as_posix()}"
     vector_store_dir: Path = BACKEND_DIR / "data" / "chroma"
     knowledge_base_dir: Path = BACKEND_DIR / "data" / "knowledge_base"
-    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model_name: str = "sentence-transformers/all-mpnet-base-v2"
+    reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    enable_reranking: bool = True
+    enable_local_question_generation: bool = True
+    question_generator_model_name: str = "google/flan-t5-small"
     interview_question_count: int = 5
     retrieval_top_k: int = 4
     allowed_origins: list[str] = Field(
@@ -57,4 +61,3 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.prepare_directories()
     return settings
-

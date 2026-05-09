@@ -6,6 +6,43 @@ from statistics import mean
 from backend.app.schemas import AnswerEvaluation, InterviewQuestion, InterviewTurn, SessionInsights, SignalScore
 
 STRUCTURE_CUES = ("first", "second", "third", "because", "tradeoff", "finally", "step", "then")
+TECHNICAL_SIGNAL_TERMS = (
+    "api",
+    "cache",
+    "chunk",
+    "chunking",
+    "database",
+    "embedding",
+    "embeddings",
+    "evaluation",
+    "fallback",
+    "index",
+    "latency",
+    "metric",
+    "monitoring",
+    "observability",
+    "pipeline",
+    "precision",
+    "queue",
+    "recall",
+    "retrieval",
+    "reranking",
+    "rollback",
+    "schema",
+    "test",
+    "throughput",
+    "validation",
+)
+OPERATIONAL_CUES = (
+    "failure",
+    "fallback",
+    "monitor",
+    "rollback",
+    "tradeoff",
+    "validate",
+    "metric",
+    "test",
+)
 
 
 def evaluate_answer(question: InterviewQuestion, answer_text: str) -> AnswerEvaluation:
@@ -21,7 +58,14 @@ def evaluate_answer(question: InterviewQuestion, answer_text: str) -> AnswerEval
         if (" " in term and term in normalized_lower) or term in unique_words
     ]
 
-    keyword_coverage = min(100, round((len(matched_terms) / max(len(expected_terms), 1)) * 100))
+    exact_coverage = min(100, round((len(matched_terms) / max(len(expected_terms), 1)) * 100))
+    technical_matches = [
+        term
+        for term in TECHNICAL_SIGNAL_TERMS
+        if (" " in term and term in normalized_lower) or term in unique_words
+    ]
+    technical_coverage = min(100, len(technical_matches) * 14)
+    keyword_coverage = max(exact_coverage, technical_coverage)
     clarity = min(
         100,
         40
@@ -35,9 +79,16 @@ def evaluate_answer(question: InterviewQuestion, answer_text: str) -> AnswerEval
         + (15 if "for example" in normalized.lower() or "for instance" in normalized.lower() else 0)
         + (10 if any(token in normalized.lower() for token in ("latency", "accuracy", "throughput", "recall", "precision")) else 0),
     )
-    depth = min(100, 20 + min(65, int(word_count * 0.7)) + (10 if word_count >= 120 else 0))
+    operational_depth = sum(1 for cue in OPERATIONAL_CUES if cue in normalized_lower)
+    depth = min(
+        100,
+        20
+        + min(60, int(word_count * 0.7))
+        + (10 if word_count >= 120 else 0)
+        + min(15, operational_depth * 4),
+    )
 
-    score = round(keyword_coverage * 0.35 + clarity * 0.2 + specificity * 0.2 + depth * 0.25)
+    score = round(keyword_coverage * 0.3 + clarity * 0.2 + specificity * 0.22 + depth * 0.28)
     strengths: list[str] = []
     improvements: list[str] = []
 
@@ -62,6 +113,8 @@ def evaluate_answer(question: InterviewQuestion, answer_text: str) -> AnswerEval
     evidence = []
     if matched_terms:
         evidence.append(f"Matched concepts: {', '.join(matched_terms[:4])}")
+    if technical_matches:
+        evidence.append(f"Technical signals: {', '.join(technical_matches[:4])}")
     evidence.append(f"Answer length: {word_count} words")
     if specificity >= 65:
         evidence.append("Included concrete evidence or measurable criteria.")

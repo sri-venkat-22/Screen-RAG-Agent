@@ -35,27 +35,46 @@ SKILL_KEYWORDS = (
     "tensorflow",
     "pytorch",
     "transformers",
+    "llm",
+    "llms",
+    "openai",
     "langchain",
     "llamaindex",
     "vector database",
     "chromadb",
     "faiss",
     "rag",
+    "retrieval",
+    "embeddings",
+    "embedding",
+    "reranking",
+    "prompt engineering",
     "nlp",
     "computer vision",
     "mlops",
+    "llmops",
+    "model monitoring",
+    "observability",
+    "evaluation",
+    "monitoring",
     "airflow",
+    "dbt",
     "ci/cd",
+    "terraform",
+    "react",
+    "next.js",
+    "typescript",
 )
 
 DOMAIN_KEYWORDS = OrderedDict(
     {
-        "retrieval systems": ("rag", "retrieval", "vector", "embeddings"),
-        "model serving": ("serving", "deployment", "inference", "latency"),
-        "backend platforms": ("api", "microservice", "database", "queue", "cache"),
-        "experimentation": ("ab test", "evaluation", "metrics", "offline", "online"),
+        "retrieval systems": ("rag", "retrieval", "vector", "embedding", "reranking"),
+        "model serving": ("serving", "deployment", "inference", "latency", "monitoring"),
+        "backend platforms": ("api", "microservice", "database", "queue", "cache", "observability"),
+        "experimentation": ("ab test", "evaluation", "metrics", "offline", "online", "benchmark"),
         "data pipelines": ("etl", "pipeline", "airflow", "spark", "batch", "stream"),
-        "cloud infrastructure": ("aws", "gcp", "azure", "docker", "kubernetes"),
+        "frontend systems": ("react", "frontend", "browser", "accessibility", "hydration"),
+        "cloud infrastructure": ("aws", "gcp", "azure", "docker", "kubernetes", "terraform"),
     }
 )
 
@@ -190,4 +209,3 @@ def _build_summary(
         f"{candidate_name or 'The candidate'} appears {seniority} with strengths in "
         f"{skill_phrase} and exposure to {domain_phrase}."
     )
-

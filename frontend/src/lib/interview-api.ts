@@ -4,7 +4,13 @@ const API_BASE_URL =
     "",
   ) ?? "http://127.0.0.1:8000/api";
 
-export type Role = "backend" | "ai-ml";
+export type Role =
+  | "backend"
+  | "ai-ml"
+  | "frontend"
+  | "fullstack"
+  | "data"
+  | "devops";
 export type QuestionType = "open" | "code" | "scenario" | "system";
 export type Difficulty = "warmup" | "core" | "deep" | "system";
 
@@ -18,6 +24,26 @@ export const ROLES: { value: Role; label: string; blurb: string }[] = [
     value: "backend",
     label: "Backend Engineer",
     blurb: "APIs, systems, observability",
+  },
+  {
+    value: "frontend",
+    label: "Frontend Engineer",
+    blurb: "React, performance, accessibility",
+  },
+  {
+    value: "fullstack",
+    label: "Full-Stack Engineer",
+    blurb: "UI, APIs, data, delivery",
+  },
+  {
+    value: "data",
+    label: "Data Engineer",
+    blurb: "Pipelines, modeling, quality",
+  },
+  {
+    value: "devops",
+    label: "DevOps / SRE",
+    blurb: "Infra, reliability, observability",
   },
 ];
 
