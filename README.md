@@ -1,204 +1,56 @@
-# PGAGI Candidate Screening System
+# Cipher - AI Interview Screening
 
-PGAGI is a role-based AI interview screening platform. It uses a React frontend, a FastAPI backend, local resume analysis, RAG retrieval, adaptive question generation, answer evaluation, and a recruiter-style final report.
+Cipher is a role-based AI technical interview screening platform. It uses a React frontend and a FastAPI backend to conduct dynamic, realistic technical interviews. Instead of a generic chatbot or simple multiple-choice quiz, Cipher generates rigorous, scenario-based questions tailored specifically to the candidate's uploaded resume, the role they are applying for, and an internal technical knowledge base using Retrieval-Augmented Generation (RAG). 
 
-The project is designed for local, traceable technical screening rather than a generic chatbot flow. Each interview session is grounded in the candidate resume, the selected target role, stored knowledge-base content, and the previous answers in the session.
+After the interview session, the system evaluates the candidate's answers semantically and provides a structured, recruiter-style final report highlighting strengths, weaknesses, and areas for improvement.
 
-## Features
+## How to Run Locally
 
-- Resume upload for PDF, text, Markdown, and plain text files
-- Role selection for AI/ML, Software, Backend, Frontend, Full-Stack, Data Engineering, Data Analysis, Cloud, DevOps/SRE, Cybersecurity, and Testing
-- Resume parsing for skills, technologies, frameworks, tools, certifications, projects, work experience, internships, education, achievements, domains, seniority, and highlights
-- Role-aware knowledge ingestion from local PDF, text, and Markdown source material
-- ChromaDB vector retrieval with sentence-transformer embeddings
-- Optional cross-encoder reranking for better retrieval quality
-- Dynamic interview planning across skills, projects, scenarios, and fundamentals
-- Anti-repetition checks using session history, recent role history, and vector memory
-- Local LLM-ready question generation with deterministic fallback behavior
-- Semantic answer evaluation with expected answers, scoring, strengths, weaknesses, missing concepts, and improvement suggestions
-- SQLite persistence for interview sessions, turns, answers, evaluations, and summaries
-- Recruiter-style results dashboard in the frontend
-- JSON interview report export
-- Generated project documentation artifacts can be kept under `project-docs/generated-docs/`
+To run the Cipher platform on your system, you need to start both the backend server and the frontend development server.
 
-## Project Structure
+### 1. Start the Backend
 
-```text
-project-root/
-  backend/
-    app/
-      api/
-      db/
-      services/
-    data/
-      knowledge_base/
-      chroma/
-    scripts/
-  frontend/
-    src/
-      features/interview/
-      lib/
-      routes/
-  project-docs/
-    generated-docs/
-  README.md
-```
-
-Important paths:
-
-- `backend/app/main.py`: FastAPI application entrypoint
-- `backend/app/api/routes.py`: API routes for interviews and knowledge status
-- `backend/app/services/interview.py`: interview session orchestration
-- `backend/app/services/resume.py`: resume text extraction and profile building
-- `backend/app/services/knowledge.py`: Chroma-backed RAG ingestion and retrieval
-- `backend/app/services/question_generation.py`: dynamic question generation and question memory
-- `backend/app/services/analysis.py`: answer evaluation and final insights
-- `frontend/src/features/interview/`: setup, interview, and result screens
-- `frontend/src/lib/interview-api.ts`: frontend API client and type mapping
-- `project-docs/generated-docs/`: generated project document artifacts, when present
-
-## Architecture
-
-```mermaid
-flowchart LR
-  UI["React + TanStack UI"] --> API["FastAPI API Layer"]
-  API --> Interview["Interview Service"]
-  Interview --> Resume["Resume Parser"]
-  Interview --> Planner["Dynamic Focus Planner"]
-  Planner --> Question["Question Composer"]
-  Question --> Memory["Similarity Guard + Question Memory"]
-  Interview --> Knowledge["Knowledge Service"]
-  Knowledge --> Chroma["Chroma Vector DB"]
-  Knowledge --> Sources["Role Knowledge Base"]
-  Interview --> Eval["Answer Evaluator"]
-  Eval --> Summary["Session Insights"]
-  Interview --> SQLite["SQLite Sessions + Turns"]
-```
-
-The frontend owns the candidate workflow. The backend owns resume parsing, role planning, retrieval, generation, evaluation, and persistence. Chroma stores embedded knowledge chunks. SQLite stores sessions and interview records.
-
-## Backend Setup
+The backend is built with Python and FastAPI.
 
 ```bash
+# Navigate to the project root
+# Activate the virtual environment
 source .venv/bin/activate
+
+# Install the required packages
 pip install -r backend/requirements.txt
+
+# Start the FastAPI server
 uvicorn backend.app.main:app --reload
 ```
+The backend will now be running at `http://127.0.0.1:8000`.
 
-Backend URL:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Frontend Setup
-
+*(Optional) If you have added or changed source material in the knowledge base (`backend/data/knowledge_base/source_docs`), you should rebuild the vector index before starting the server:*
 ```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend URL:
-
-```text
-http://127.0.0.1:5173
-```
-
-By default, the frontend calls:
-
-```text
-http://127.0.0.1:8000/api
-```
-
-Override with:
-
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
-```
-
-## API Endpoints
-
-- `GET /api/health`
-- `GET /api/roles`
-- `GET /api/knowledge/status`
-- `POST /api/interviews/sessions`
-- `POST /api/interviews/sessions/{session_id}/answers`
-- `GET /api/interviews/sessions/{session_id}/summary`
-
-## RAG Knowledge Base
-
-Role corpora and source documents live under:
-
-```text
-backend/data/knowledge_base/
-backend/data/knowledge_base/source_docs/
-```
-
-Supported source formats:
-
-- `.pdf`
-- `.txt`
-- `.md`
-- `.markdown`
-
-After adding or changing source material, rebuild the vector index:
-
-```bash
-source .venv/bin/activate
 python -m backend.scripts.ingest_knowledge
 ```
 
-Chroma persists vectors under:
+### 2. Start the Frontend
 
-```text
-backend/data/chroma/
-```
-
-## Configuration
-
-Configuration is loaded from environment variables and `.env`. See `.env.example` for available settings.
-
-Key settings:
-
-- `DATABASE_URL`
-- `VECTOR_STORE_DIR`
-- `KNOWLEDGE_BASE_DIR`
-- `EMBEDDING_MODEL_NAME`
-- `RERANKER_MODEL_NAME`
-- `ENABLE_RERANKING`
-- `ENABLE_LOCAL_QUESTION_GENERATION`
-- `QUESTION_GENERATOR_MODEL_NAME`
-- `QUESTION_GENERATOR_LOCAL_FILES_ONLY`
-- `ENABLE_LOCAL_ANSWER_EVALUATION`
-- `ANSWER_EVALUATOR_MODEL_NAME`
-- `INTERVIEW_QUESTION_COUNT`
-- `MAX_CHUNKS_PER_SOURCE_DOC`
-- `ALLOWED_ORIGINS`
-
-## Verification
-
-Backend syntax check:
+The frontend is built with React and Vite.
 
 ```bash
-source .venv/bin/activate
-python -m compileall backend/app
-```
-
-Frontend checks:
-
-```bash
+# Open a new terminal window
+# Navigate to the frontend directory
 cd frontend
-npm run lint
-npm run build
+
+# Install the Node dependencies
+npm install
+
+# Start the Vite development server
+npm run dev
 ```
+The frontend will now be running at `http://127.0.0.1:5173`.
 
-## Demo Flow
+### 3. Use the Application
 
-1. Start the backend.
-2. Start the frontend.
-3. Upload a resume.
-4. Select a target role.
-5. Answer the generated interview questions.
-6. Review the final results dashboard.
-7. Export the JSON interview report if needed.
+1. Open your browser and navigate to `http://127.0.0.1:5173`.
+2. Upload a sample resume (PDF or text).
+3. Select a target role (e.g., Software Engineer, Backend Engineer, AI/ML Engineer).
+4. Take the dynamically generated technical screening interview.
+5. Review the final evaluation and session insights on the results dashboard.
