@@ -16,15 +16,49 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'data' / 'app.db').resolve().as_posix()}"
     vector_store_dir: Path = BACKEND_DIR / "data" / "chroma"
     knowledge_base_dir: Path = BACKEND_DIR / "data" / "knowledge_base"
-    embedding_model_name: str = "sentence-transformers/all-mpnet-base-v2"
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     enable_reranking: bool = True
     enable_local_question_generation: bool = True
-    question_generator_model_name: str = "google/flan-t5-small"
-    interview_question_count: int = 5
+    question_generator_model_name: str = "meta-llama/Llama-3.2-3B-Instruct"
+    question_generator_fallback_model_names: list[str] = Field(
+        default_factory=lambda: [
+            "meta-llama/Llama-3.1-70B-Instruct",
+            "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "microsoft/Phi-3-mini-4k-instruct",
+        ]
+    )
+    question_generator_local_files_only: bool = True
+    question_generator_max_new_tokens: int = 360
+    question_similarity_threshold: float = 0.72
+    question_regeneration_attempts: int = 8
+    enable_local_answer_evaluation: bool = True
+    answer_evaluator_model_name: str = "meta-llama/Llama-3.2-3B-Instruct"
+    answer_evaluator_fallback_model_names: list[str] = Field(
+        default_factory=lambda: [
+            "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "microsoft/Phi-3-mini-4k-instruct",
+        ]
+    )
+    answer_evaluator_local_files_only: bool = True
+    answer_evaluator_max_new_tokens: int = 900
+    interview_question_count: int = 7
     retrieval_top_k: int = 4
+    ingestion_batch_size: int = 64
+    max_chunks_per_source_doc: int = 180
     allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+        ]
     )
 
     model_config = SettingsConfigDict(
@@ -42,6 +76,17 @@ class Settings(BaseSettings):
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def _parse_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator(
+        "question_generator_fallback_model_names",
+        "answer_evaluator_fallback_model_names",
+        mode="before",
+    )
+    @classmethod
+    def _parse_model_list(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value

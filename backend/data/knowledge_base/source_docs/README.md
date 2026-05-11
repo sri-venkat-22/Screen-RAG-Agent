@@ -13,4 +13,6 @@ source_docs/
 
 Supported file types are `.pdf`, `.txt`, `.md`, and `.markdown`.
 
-During ingestion, every supported file directly inside `source_docs/` is treated as a primary RAG source for every role. README files and assignment/spec PDFs are ignored. The Markdown files one level above this directory are fallback corpora so the app still runs when no provided source is present locally.
+During ingestion, supported files directly inside `source_docs/` are mapped into role-specific vector collections. The AI/ML role uses the core provided ML books, and the Data / Applied ML role uses the applied ML books. Other roles use the Markdown fallback corpora one level above this directory unless matching primary sources are added in code.
+
+README files and assignment/spec PDFs are ignored so the RAG pipeline only embeds knowledge material.

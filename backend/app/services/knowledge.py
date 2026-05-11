@@ -49,11 +49,23 @@ STOPWORDS = {
     "used",
 }
 
-SHARED_COLLECTION_NAME = "shared_source_knowledge"
 EXCLUDED_SOURCE_NAME_PARTS = (
     "assignment",
     "intern assignment",
 )
+ROLE_PRIMARY_SOURCE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "ai-ml": (
+        "machinelearningtommitchell",
+        "machine learning tom mitchell",
+        "machine learning for absolute beginners",
+        "hundred page machine learning",
+        "hundred-page machine learning",
+    ),
+    "data": (
+        "introduction to machine learning with python",
+        "master machine learning algorithms",
+    ),
+}
 
 
 class KnowledgeBaseService:
@@ -70,11 +82,6 @@ class KnowledgeBaseService:
         self._reranker: CrossEncoder | None = None
 
     def ensure_seeded(self, force: bool = False) -> dict[str, int]:
-        primary_docs = self._source_documents()
-        if primary_docs:
-            count = self._ensure_shared_seeded(force=force)
-            return {role.value: count for role in list_roles()}
-
         seeded: dict[str, int] = {}
         for role in list_roles():
             seeded[role.value] = self._ensure_role_seeded(role.value, force=force)
@@ -82,7 +89,7 @@ class KnowledgeBaseService:
 
     def retrieve(self, role_value: str, queries: list[str], top_k: int | None = None) -> list[RetrievedSource]:
         role = get_role(role_value)
-        collection = self._get_retrieval_collection(role.value)
+        collection = self._get_collection(role.value)
         top_k = top_k or self.settings.retrieval_top_k
         collection_count = collection.count()
         if collection_count == 0:
@@ -130,75 +137,33 @@ class KnowledgeBaseService:
     def _ensure_role_seeded(self, role_value: str, force: bool = False) -> int:
         role = get_role(role_value)
         collection = self._get_collection(role_value)
-        if collection.count() and not force and self._collection_is_current(collection):
-            return collection.count()
-        if collection.count() and not self._collection_is_current(collection):
-            self.client.delete_collection(role.collection_name)
-            collection = self._create_collection(role_value)
-        if force and collection.count():
+        source_fingerprint = self._source_fingerprint(role_value)
+        collection_count = collection.count()
+        is_current = self._collection_is_current(collection, source_fingerprint)
+        if collection_count and not force and is_current:
+            return collection_count
+        if force or not is_current:
             self.client.delete_collection(role.collection_name)
             collection = self._create_collection(role_value)
 
         chunks = self._load_role_chunks(role)
-        ids = [chunk["id"] for chunk in chunks]
-        documents = [chunk["text"] for chunk in chunks]
-        metadatas = [chunk["metadata"] for chunk in chunks]
-        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-        return len(chunks)
-
-    def _ensure_shared_seeded(self, force: bool = False) -> int:
-        collection = self._get_shared_collection()
-        if collection.count() and not force and self._collection_is_current(collection):
-            return collection.count()
-        if collection.count() and not self._collection_is_current(collection):
-            self.client.delete_collection(SHARED_COLLECTION_NAME)
-            collection = self._create_shared_collection()
-        if force and collection.count():
-            self.client.delete_collection(SHARED_COLLECTION_NAME)
-            collection = self._create_shared_collection()
-
-        chunks = self._load_source_chunks()
-        ids = [chunk["id"] for chunk in chunks]
-        documents = [chunk["text"] for chunk in chunks]
-        metadatas = [chunk["metadata"] for chunk in chunks]
-        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+        chunks.extend(self._load_role_source_chunks(role.value))
+        self._upsert_chunks(collection, chunks)
         return len(chunks)
 
     def source_status(self) -> dict[str, dict]:
         status: dict[str, dict] = {}
-        primary_docs = self._source_documents()
         for role in list_roles():
+            primary_docs = self._source_documents(role.value)
+            collection = self._get_collection(role.value)
             status[role.value] = {
                 "primary_source": bool(primary_docs),
                 "documents": [path.name for path in primary_docs],
                 "fallback_file": role.knowledge_file,
-                "collection": SHARED_COLLECTION_NAME if primary_docs else role.collection_name,
+                "collection": role.collection_name,
+                "chunk_count": collection.count(),
             }
         return status
-
-    def _get_retrieval_collection(self, role_value: str) -> Collection:
-        if self._source_documents():
-            return self._get_shared_collection()
-        return self._get_collection(role_value)
-
-    def _get_shared_collection(self) -> Collection:
-        try:
-            return self.client.get_collection(
-                SHARED_COLLECTION_NAME,
-                embedding_function=self.embedding_function,
-            )
-        except Exception:
-            return self._create_shared_collection()
-
-    def _create_shared_collection(self) -> Collection:
-        return self.client.get_or_create_collection(
-            SHARED_COLLECTION_NAME,
-            embedding_function=self.embedding_function,
-            metadata={
-                "description": "Shared source knowledge base",
-                "embedding_model": self.settings.embedding_model_name,
-            },
-        )
 
     def _get_collection(self, role_value: str) -> Collection:
         role = get_role(role_value)
@@ -218,34 +183,44 @@ class KnowledgeBaseService:
             metadata={
                 "description": role.label,
                 "embedding_model": self.settings.embedding_model_name,
+                "source_fingerprint": self._source_fingerprint(role_value),
             },
         )
 
-    def _collection_is_current(self, collection: Collection) -> bool:
+    def _collection_is_current(self, collection: Collection, source_fingerprint: str) -> bool:
         metadata = collection.metadata or {}
-        return metadata.get("embedding_model") == self.settings.embedding_model_name
+        return (
+            metadata.get("embedding_model") == self.settings.embedding_model_name
+            and metadata.get("source_fingerprint") == source_fingerprint
+        )
 
     def _load_role_chunks(self, role) -> list[dict]:
         fallback_path = self.settings.knowledge_base_dir / role.knowledge_file
         return self._chunk_markdown(fallback_path, role.value, "fallback_corpus")
 
-    def _load_source_chunks(self) -> list[dict]:
+    def _load_role_source_chunks(self, role_value: str) -> list[dict]:
         chunks: list[dict] = []
-        for path in self._source_documents():
+        for path in self._source_documents(role_value):
             if path.suffix.lower() == ".pdf":
-                chunks.extend(self._chunk_pdf(path, "shared", "primary_book"))
+                document_chunks = self._chunk_pdf(path, role_value, "primary_book")
             else:
-                chunks.extend(self._chunk_text_document(path, "shared", "primary_corpus"))
+                document_chunks = self._chunk_text_document(path, role_value, "primary_corpus")
+            chunks.extend(self._limit_source_chunks(document_chunks))
         return chunks
 
-    def _source_documents(self) -> list[Path]:
+    def _source_documents(self, role_value: str) -> list[Path]:
         source_dir = self.settings.knowledge_base_dir / "source_docs"
         if not source_dir.exists():
+            return []
+        patterns = ROLE_PRIMARY_SOURCE_PATTERNS.get(role_value, ())
+        if not patterns:
             return []
         return sorted(
             path
             for path in source_dir.iterdir()
-            if path.is_file() and self._is_supported_source_file(path)
+            if path.is_file()
+            and self._is_supported_source_file(path)
+            and self._matches_role_source(path, patterns)
         )
 
     def _is_supported_source_file(self, path: Path) -> bool:
@@ -256,6 +231,57 @@ class KnowledgeBaseService:
         if any(name_part in lowered_name for name_part in EXCLUDED_SOURCE_NAME_PARTS):
             return False
         return path.suffix.lower() in supported
+
+    def _matches_role_source(self, path: Path, patterns: tuple[str, ...]) -> bool:
+        normalized_name = " ".join(path.stem.lower().replace("_", " ").replace("-", " ").split())
+        compact_name = normalized_name.replace(" ", "")
+        for pattern in patterns:
+            normalized_pattern = " ".join(pattern.lower().replace("_", " ").replace("-", " ").split())
+            if normalized_pattern in normalized_name:
+                return True
+            if normalized_pattern.replace(" ", "") in compact_name:
+                return True
+        return False
+
+    def _source_fingerprint(self, role_value: str) -> str:
+        role = get_role(role_value)
+        paths = [self.settings.knowledge_base_dir / role.knowledge_file, *self._source_documents(role_value)]
+        entries: list[str] = [
+            self.settings.embedding_model_name,
+            f"max_chunks={self.settings.max_chunks_per_source_doc}",
+        ]
+        for path in paths:
+            if not path.exists():
+                entries.append(f"{path.name}:missing")
+                continue
+            stat = path.stat()
+            entries.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}")
+        return hashlib.sha1("|".join(entries).encode()).hexdigest()
+
+    def _limit_source_chunks(self, chunks: list[dict]) -> list[dict]:
+        limit = self.settings.max_chunks_per_source_doc
+        if limit <= 0 or len(chunks) <= limit:
+            return chunks
+        stride = len(chunks) / limit
+        selected: list[dict] = []
+        used_indexes: set[int] = set()
+        for item_index in range(limit):
+            chunk_index = min(int(item_index * stride), len(chunks) - 1)
+            if chunk_index in used_indexes:
+                continue
+            used_indexes.add(chunk_index)
+            selected.append(chunks[chunk_index])
+        return selected
+
+    def _upsert_chunks(self, collection: Collection, chunks: list[dict]) -> None:
+        batch_size = max(1, self.settings.ingestion_batch_size)
+        for start in range(0, len(chunks), batch_size):
+            batch = chunks[start : start + batch_size]
+            collection.upsert(
+                ids=[chunk["id"] for chunk in batch],
+                documents=[chunk["text"] for chunk in batch],
+                metadatas=[chunk["metadata"] for chunk in batch],
+            )
 
     def _chunk_pdf(self, path: Path, role_value: str, source_kind: str) -> list[dict]:
         reader = PdfReader(str(path))
