@@ -1,98 +1,204 @@
 # PGAGI Candidate Screening System
 
-A role-based candidate screening system with a slim React frontend and a FastAPI backend that implements a local, traceable RAG interview pipeline.
+PGAGI is a role-based AI interview screening platform. It uses a React frontend, a FastAPI backend, local resume analysis, RAG retrieval, adaptive question generation, answer evaluation, and a recruiter-style final report.
 
-## What is implemented
+The project is designed for local, traceable technical screening rather than a generic chatbot flow. Each interview session is grounded in the candidate resume, the selected target role, stored knowledge-base content, and the previous answers in the session.
 
-- Resume upload for PDF or text files
-- Role selection for `AI / ML Engineer`, `Backend Engineer`, `Frontend Engineer`, `Full-Stack Engineer`, `Data Engineer`, and `DevOps / SRE`
-- Resume parsing with skill, technology, domain, and seniority extraction
-- Primary-source knowledge ingestion from a single shared PDF, text, or Markdown source directory
-- Fallback role corpora under `backend/data/knowledge_base/*.md` when no primary document is available
-- Chunking plus local embeddings with `sentence-transformers/all-mpnet-base-v2`
-- Persistent vector retrieval with Chroma and optional cross-encoder reranking
-- Evidence-driven question generation with optional local `google/flan-t5-small` generation fallback
-- SQLite-backed interview session and transcript storage
-- Adaptive question flow with traceable `query -> sources -> question -> answer -> summary`
-- Structured session summary with grounded signals and transcript export
+## Features
 
-## Project structure
+- Resume upload for PDF, text, Markdown, and plain text files
+- Role selection for AI/ML, Software, Backend, Frontend, Full-Stack, Data Engineering, Data Analysis, Cloud, DevOps/SRE, Cybersecurity, and Testing
+- Resume parsing for skills, technologies, frameworks, tools, certifications, projects, work experience, internships, education, achievements, domains, seniority, and highlights
+- Role-aware knowledge ingestion from local PDF, text, and Markdown source material
+- ChromaDB vector retrieval with sentence-transformer embeddings
+- Optional cross-encoder reranking for better retrieval quality
+- Dynamic interview planning across skills, projects, scenarios, and fundamentals
+- Anti-repetition checks using session history, recent role history, and vector memory
+- Local LLM-ready question generation with deterministic fallback behavior
+- Semantic answer evaluation with expected answers, scoring, strengths, weaknesses, missing concepts, and improvement suggestions
+- SQLite persistence for interview sessions, turns, answers, evaluations, and summaries
+- Recruiter-style results dashboard in the frontend
+- JSON interview report export
+- Generated project documentation artifacts can be kept under `project-docs/generated-docs/`
 
-- `frontend/`: React + TanStack Start interview UI
-- `backend/`: FastAPI app, services, persistence, ingestion, and knowledge base
-- `.env.example`: environment variables for local configuration
+## Project Structure
 
-## System Architecture
+```text
+project-root/
+  backend/
+    app/
+      api/
+      db/
+      services/
+    data/
+      knowledge_base/
+      chroma/
+    scripts/
+  frontend/
+    src/
+      features/interview/
+      lib/
+      routes/
+  project-docs/
+    generated-docs/
+  README.md
+```
+
+Important paths:
+
+- `backend/app/main.py`: FastAPI application entrypoint
+- `backend/app/api/routes.py`: API routes for interviews and knowledge status
+- `backend/app/services/interview.py`: interview session orchestration
+- `backend/app/services/resume.py`: resume text extraction and profile building
+- `backend/app/services/knowledge.py`: Chroma-backed RAG ingestion and retrieval
+- `backend/app/services/question_generation.py`: dynamic question generation and question memory
+- `backend/app/services/analysis.py`: answer evaluation and final insights
+- `frontend/src/features/interview/`: setup, interview, and result screens
+- `frontend/src/lib/interview-api.ts`: frontend API client and type mapping
+- `project-docs/generated-docs/`: generated project document artifacts, when present
+
+## Architecture
 
 ```mermaid
 flowchart LR
-  A["React/TanStack UI"] --> B["FastAPI API Layer"]
-  B --> C["Interview Service"]
-  C --> D["Resume Parser"]
-  C --> E["RAG Knowledge Service"]
-  C --> F["Question Composer"]
-  C --> G["Answer Evaluator"]
-  E --> H["Chroma Vector DB"]
-  E --> I["Shared PDF/Text Knowledge Base"]
-  C --> J["SQLite Sessions + Turns"]
-  G --> J
-  F --> J
+  UI["React + TanStack UI"] --> API["FastAPI API Layer"]
+  API --> Interview["Interview Service"]
+  Interview --> Resume["Resume Parser"]
+  Interview --> Planner["Dynamic Focus Planner"]
+  Planner --> Question["Question Composer"]
+  Question --> Memory["Similarity Guard + Question Memory"]
+  Interview --> Knowledge["Knowledge Service"]
+  Knowledge --> Chroma["Chroma Vector DB"]
+  Knowledge --> Sources["Role Knowledge Base"]
+  Interview --> Eval["Answer Evaluator"]
+  Eval --> Summary["Session Insights"]
+  Interview --> SQLite["SQLite Sessions + Turns"]
 ```
 
-The frontend owns the candidate journey: setup, interview, and results. The backend owns all business logic: resume parsing, interview planning, retrieval, question generation, answer evaluation, and persistence. SQLite stores sessions, questions, answers, evaluations, and final reports. Chroma stores embedded knowledge chunks.
+The frontend owns the candidate workflow. The backend owns resume parsing, role planning, retrieval, generation, evaluation, and persistence. Chroma stores embedded knowledge chunks. SQLite stores sessions and interview records.
 
-## Key Design Decisions
-
-- A single shared source directory, `backend/data/knowledge_base/source_docs/`, keeps knowledge upload simple. Role-specific behavior comes from role-aware queries, resume signals, and question blueprints rather than duplicated source folders.
-- Source ingestion skips README files and assignment/spec PDFs so only actual knowledge material is embedded.
-- Chunks use overlap to preserve context across page boundaries, then are embedded with `sentence-transformers/all-mpnet-base-v2`.
-- Retrieval combines vector similarity, lightweight lexical overlap, and optional cross-encoder reranking.
-- Question generation is evidence-driven: each question stores the query, retrieved chunks, source metadata, and rationale for traceability.
-- Resume data affects topic selection, initial difficulty, and adaptive follow-up direction.
-- The answer evaluator is intentionally lightweight and explainable, producing scores for grounding, clarity, specificity, and depth rather than a black-box pass/fail.
-
-## Backend run
+## Backend Setup
 
 ```bash
 source .venv/bin/activate
+pip install -r backend/requirements.txt
 uvicorn backend.app.main:app --reload
 ```
 
-The API starts at `http://127.0.0.1:8000` and exposes:
+Backend URL:
 
-- `GET /api/health`
-- `GET /api/roles`
-- `POST /api/interviews/sessions`
-- `POST /api/interviews/sessions/{session_id}/answers`
-- `GET /api/interviews/sessions/{session_id}/summary`
-- `GET /api/knowledge/status`
+```text
+http://127.0.0.1:8000
+```
 
-## Frontend run
+## Frontend Setup
 
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-The frontend expects the backend at `http://127.0.0.1:8000/api` by default. Override it with:
+Frontend URL:
+
+```text
+http://127.0.0.1:5173
+```
+
+By default, the frontend calls:
+
+```text
+http://127.0.0.1:8000/api
+```
+
+Override with:
 
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
 ```
 
-## Notes on the AI/ML core
+## API Endpoints
 
-- Put all books/corpora directly in `backend/data/knowledge_base/source_docs/`. Supported formats are `.pdf`, `.txt`, `.md`, and `.markdown`.
-- Assignment/spec PDFs are ignored by ingestion and should not be used as RAG knowledge.
-- For the AI/ML role, this repo is wired to use Tom Mitchell's official Machine Learning PDF from CMU (`https://www.cs.cmu.edu/~tom/files/MachineLearningTomMitchell.pdf`) as a primary book when it is present locally.
-- Run `python -m backend.scripts.ingest_knowledge` after adding source documents. Chroma persists vectors under `backend/data/chroma`.
-- Retrieval first embeds candidate/role-aware queries, then reranks candidates with `cross-encoder/ms-marco-MiniLM-L-6-v2` when enabled.
-- Question generation uses retrieved excerpts, resume signals, calibrated difficulty, and answer history. Every turn stores its retrieval trace for auditability.
+- `GET /api/health`
+- `GET /api/roles`
+- `GET /api/knowledge/status`
+- `POST /api/interviews/sessions`
+- `POST /api/interviews/sessions/{session_id}/answers`
+- `GET /api/interviews/sessions/{session_id}/summary`
 
-## Demo Video Checklist
+## RAG Knowledge Base
 
-- Start the backend and frontend.
-- Show the uploaded knowledge PDFs in `backend/data/knowledge_base/source_docs/`.
-- Upload a resume and select a target role.
-- Answer at least two interview questions to show session continuity and adaptation.
-- Open the results screen and explain the transcript, scores, strengths, improvements, and retrieved source evidence.
+Role corpora and source documents live under:
+
+```text
+backend/data/knowledge_base/
+backend/data/knowledge_base/source_docs/
+```
+
+Supported source formats:
+
+- `.pdf`
+- `.txt`
+- `.md`
+- `.markdown`
+
+After adding or changing source material, rebuild the vector index:
+
+```bash
+source .venv/bin/activate
+python -m backend.scripts.ingest_knowledge
+```
+
+Chroma persists vectors under:
+
+```text
+backend/data/chroma/
+```
+
+## Configuration
+
+Configuration is loaded from environment variables and `.env`. See `.env.example` for available settings.
+
+Key settings:
+
+- `DATABASE_URL`
+- `VECTOR_STORE_DIR`
+- `KNOWLEDGE_BASE_DIR`
+- `EMBEDDING_MODEL_NAME`
+- `RERANKER_MODEL_NAME`
+- `ENABLE_RERANKING`
+- `ENABLE_LOCAL_QUESTION_GENERATION`
+- `QUESTION_GENERATOR_MODEL_NAME`
+- `QUESTION_GENERATOR_LOCAL_FILES_ONLY`
+- `ENABLE_LOCAL_ANSWER_EVALUATION`
+- `ANSWER_EVALUATOR_MODEL_NAME`
+- `INTERVIEW_QUESTION_COUNT`
+- `MAX_CHUNKS_PER_SOURCE_DOC`
+- `ALLOWED_ORIGINS`
+
+## Verification
+
+Backend syntax check:
+
+```bash
+source .venv/bin/activate
+python -m compileall backend/app
+```
+
+Frontend checks:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+## Demo Flow
+
+1. Start the backend.
+2. Start the frontend.
+3. Upload a resume.
+4. Select a target role.
+5. Answer the generated interview questions.
+6. Review the final results dashboard.
+7. Export the JSON interview report if needed.

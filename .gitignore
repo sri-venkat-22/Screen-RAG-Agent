@@ -11,3 +11,7 @@ backend/data/chroma/
 backend/.pytest_cache/
 backend/.mypy_cache/
 .env
+
+# Keep the root project README, ignore other Markdown project files.
+*.md
+!/README.md

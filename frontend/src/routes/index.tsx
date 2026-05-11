@@ -105,8 +105,7 @@ function Index() {
 
       <footer className="relative z-10 border-t border-border/40 mt-12">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-6 text-center text-xs font-mono text-muted-foreground">
-          Frontend connected to the FastAPI RAG backend · see{" "}
-          <code className="text-foreground/70">src/lib/interview-api.ts</code>
+          Powered by AI Interview Engine
         </div>
       </footer>
 

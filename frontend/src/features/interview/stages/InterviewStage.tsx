@@ -10,6 +10,11 @@ import {
   MessageSquare,
   Brain,
   Zap,
+  Bug,
+  GitBranch,
+  Layers3,
+  ListChecks,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +38,11 @@ const TYPE_META: Record<
     tone: "text-primary bg-primary/10",
   },
   code: { icon: Code2, label: "Technical", tone: "text-accent bg-accent/10" },
+  coding: {
+    icon: Code2,
+    label: "Coding",
+    tone: "text-accent bg-accent/10",
+  },
   scenario: {
     icon: Brain,
     label: "Scenario",
@@ -42,6 +52,41 @@ const TYPE_META: Record<
     icon: Zap,
     label: "System design",
     tone: "text-success bg-success/10",
+  },
+  theoretical: {
+    icon: Brain,
+    label: "Theory",
+    tone: "text-primary bg-primary/10",
+  },
+  debugging: {
+    icon: Bug,
+    label: "Debugging",
+    tone: "text-warning bg-warning/10",
+  },
+  project: {
+    icon: GitBranch,
+    label: "Project",
+    tone: "text-success bg-success/10",
+  },
+  behavioral: {
+    icon: MessageSquare,
+    label: "Behavioral",
+    tone: "text-primary bg-primary/10",
+  },
+  architecture: {
+    icon: Layers3,
+    label: "Architecture",
+    tone: "text-success bg-success/10",
+  },
+  mcq: {
+    icon: ListChecks,
+    label: "MCQ",
+    tone: "text-accent bg-accent/10",
+  },
+  problem_solving: {
+    icon: Wrench,
+    label: "Problem solving",
+    tone: "text-warning bg-warning/10",
   },
 };
 
@@ -112,7 +157,7 @@ export function InterviewStage({
       }
 
       if (!response.nextQuestion) {
-        toast.error("The backend did not return a next question");
+        toast.error("An error occurred while generating the next question");
         return;
       }
 
@@ -211,10 +256,6 @@ export function InterviewStage({
             {q.prompt}
           </h2>
 
-          <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-            {q.rationale}
-          </p>
-
           {q.hint && (
             <div className="mt-5">
               <button
@@ -273,27 +314,6 @@ export function InterviewStage({
             </div>
           </div>
 
-          {lastEvaluation && (
-            <div className="mt-6 grid sm:grid-cols-4 gap-3">
-              {[
-                { label: "Last score", value: lastEvaluation.score },
-                { label: "Grounding", value: lastEvaluation.keywordCoverage },
-                { label: "Clarity", value: lastEvaluation.clarity },
-                { label: "Specificity", value: lastEvaluation.specificity },
-              ].map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-xl border border-border/60 bg-background/40 p-3"
-                >
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
-                    {metric.label}
-                  </p>
-                  <p className="font-display text-2xl">{metric.value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
           <div className="mt-7 flex items-center justify-between gap-4">
             <p className="text-xs text-muted-foreground">
               {currentQuestion.index === currentQuestion.total
@@ -345,12 +365,14 @@ export function InterviewStage({
 
 function recommendedSeconds(question: Question) {
   switch (question.difficulty) {
+    case "easy":
     case "warmup":
       return 180;
+    case "medium":
     case "core":
       return 240;
+    case "hard":
     case "deep":
-      return 300;
     case "system":
       return 360;
     default:

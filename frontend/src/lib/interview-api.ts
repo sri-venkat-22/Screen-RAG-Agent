@@ -10,15 +10,44 @@ export type Role =
   | "frontend"
   | "fullstack"
   | "data"
-  | "devops";
-export type QuestionType = "open" | "code" | "scenario" | "system";
-export type Difficulty = "warmup" | "core" | "deep" | "system";
+  | "devops"
+  | "software"
+  | "cloud"
+  | "data-analyst"
+  | "cybersecurity"
+  | "testing";
+export type QuestionType =
+  | "theoretical"
+  | "coding"
+  | "scenario"
+  | "debugging"
+  | "project"
+  | "behavioral"
+  | "architecture"
+  | "mcq"
+  | "problem_solving"
+  | "open"
+  | "code"
+  | "system";
+export type Difficulty =
+  | "easy"
+  | "medium"
+  | "hard"
+  | "warmup"
+  | "core"
+  | "deep"
+  | "system";
 
 export const ROLES: { value: Role; label: string; blurb: string }[] = [
   {
     value: "ai-ml",
     label: "AI / ML Engineer",
     blurb: "RAG, retrieval, evaluation",
+  },
+  {
+    value: "software",
+    label: "Software Engineer",
+    blurb: "Coding, design, debugging",
   },
   {
     value: "backend",
@@ -41,11 +70,47 @@ export const ROLES: { value: Role; label: string; blurb: string }[] = [
     blurb: "Pipelines, modeling, quality",
   },
   {
+    value: "data-analyst",
+    label: "Data Analyst",
+    blurb: "SQL, dashboards, metrics",
+  },
+  {
+    value: "cloud",
+    label: "Cloud Engineer",
+    blurb: "Cloud architecture, operations",
+  },
+  {
     value: "devops",
     label: "DevOps / SRE",
     blurb: "Infra, reliability, observability",
   },
+  {
+    value: "cybersecurity",
+    label: "Cybersecurity",
+    blurb: "Threats, security, incidents",
+  },
+  {
+    value: "testing",
+    label: "Testing Engineer",
+    blurb: "QA, automation, release quality",
+  },
 ];
+
+export interface ResumeProject {
+  name: string;
+  description: string;
+  technologies: string[];
+  domain?: string | null;
+  evidence: string[];
+}
+
+export interface ResumeExperience {
+  title: string;
+  organization?: string | null;
+  description: string;
+  technologies: string[];
+  evidence: string[];
+}
 
 export interface ResumeProfile {
   candidateName: string;
@@ -53,7 +118,18 @@ export interface ResumeProfile {
   phone?: string | null;
   skills: string[];
   technologies: string[];
+  tools: string[];
+  frameworks: string[];
+  certifications: string[];
+  workExperience: ResumeExperience[];
+  internships: ResumeExperience[];
+  projects: ResumeProject[];
+  achievements: string[];
+  education: string[];
   domains: string[];
+  domainExpertise: string[];
+  semanticTags: string[];
+  fullTextDigest?: string | null;
   seniority: string;
   experienceYears?: number | null;
   highlights: string[];
@@ -90,6 +166,17 @@ export interface AnswerEvaluation {
   clarity: number;
   specificity: number;
   depth: number;
+  correctness: number;
+  technicalDepth: number;
+  completeness: number;
+  practicalReasoning: number;
+  communication: number;
+  confidence: number;
+  expectedAnswer: string;
+  evaluationSummary: string;
+  missingConcepts: string[];
+  weaknesses: string[];
+  improvementSuggestion: string;
   evidence: string[];
   strengths: string[];
   improvements: string[];
@@ -98,16 +185,27 @@ export interface AnswerEvaluation {
 export interface SessionInsights {
   overallScore: number;
   strengths: string[];
+  weaknesses: string[];
   improvements: string[];
   signal: { label: string; score: number }[];
   recommendation: string;
+  technicalRating: number;
+  communicationRating: number;
+  problemSolvingRating: number;
+  recommendedSkillImprovements: string[];
+  readinessLevel: string;
 }
 
-export interface TranscriptTurn {
-  question: Question;
-  answer: string;
+export interface InterviewResult {
+  index: number;
+  question: string;
+  candidateAnswer: string;
+  expectedAnswer: string;
+  aiEvaluation: AnswerEvaluation;
+  score: number;
+  scoreOutOf10: number;
+  improvementSuggestion: string;
   answerSeconds: number;
-  evaluation: AnswerEvaluation;
 }
 
 export interface SessionSummary {
@@ -116,7 +214,7 @@ export interface SessionSummary {
   candidate: string;
   durationSec: number;
   resumeProfile: ResumeProfile;
-  transcript: TranscriptTurn[];
+  results: InterviewResult[];
   insights: SessionInsights;
 }
 
@@ -190,7 +288,15 @@ export async function submitAnswer(args: {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch (error) {
+    throw new Error(
+      `Unable to connect to the interview engine. Please check your network connection and try again.`,
+      { cause: error },
+    );
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({
       detail: `Request failed with status ${response.status}`,
@@ -207,19 +313,35 @@ function mapSummary(summary: BackendSessionSummary): SessionSummary {
     candidate: summary.candidate,
     durationSec: summary.duration_sec,
     resumeProfile: mapResumeProfile(summary.resume_profile),
-    transcript: summary.transcript.map((turn) => ({
-      question: mapQuestion(turn.question),
-      answer: turn.answer,
-      answerSeconds: turn.answer_seconds,
-      evaluation: mapEvaluation(turn.evaluation),
-    })),
+    results: (summary.results ?? []).map(mapInterviewResult),
     insights: {
       overallScore: summary.insights.overall_score,
       strengths: summary.insights.strengths,
+      weaknesses: summary.insights.weaknesses ?? [],
       improvements: summary.insights.improvements,
       signal: summary.insights.signal,
       recommendation: summary.insights.recommendation,
+      technicalRating: summary.insights.technical_rating ?? 0,
+      communicationRating: summary.insights.communication_rating ?? 0,
+      problemSolvingRating: summary.insights.problem_solving_rating ?? 0,
+      recommendedSkillImprovements:
+        summary.insights.recommended_skill_improvements ?? [],
+      readinessLevel: summary.insights.readiness_level ?? "Needs review",
     },
+  };
+}
+
+function mapInterviewResult(result: BackendInterviewResult): InterviewResult {
+  return {
+    index: result.index,
+    question: result.question,
+    candidateAnswer: result.candidate_answer,
+    expectedAnswer: result.expected_answer,
+    aiEvaluation: mapEvaluation(result.ai_evaluation),
+    score: result.score,
+    scoreOutOf10: result.score_out_of_10,
+    improvementSuggestion: result.improvement_suggestion,
+    answerSeconds: result.answer_seconds ?? 0,
   };
 }
 
@@ -228,9 +350,20 @@ function mapResumeProfile(profile: BackendResumeProfile): ResumeProfile {
     candidateName: profile.candidate_name,
     email: profile.email,
     phone: profile.phone,
-    skills: profile.skills,
-    technologies: profile.technologies,
-    domains: profile.domains,
+    skills: profile.skills ?? [],
+    technologies: profile.technologies ?? [],
+    tools: profile.tools ?? [],
+    frameworks: profile.frameworks ?? [],
+    certifications: profile.certifications ?? [],
+    workExperience: profile.work_experience ?? [],
+    internships: profile.internships ?? [],
+    projects: profile.projects ?? [],
+    achievements: profile.achievements ?? [],
+    education: profile.education ?? [],
+    domains: profile.domains ?? [],
+    domainExpertise: profile.domain_expertise ?? [],
+    semanticTags: profile.semantic_tags ?? [],
+    fullTextDigest: profile.full_text_digest,
     seniority: profile.seniority,
     experienceYears: profile.experience_years,
     highlights: profile.highlights,
@@ -269,6 +402,19 @@ function mapEvaluation(evaluation: BackendEvaluation): AnswerEvaluation {
     clarity: evaluation.clarity,
     specificity: evaluation.specificity,
     depth: evaluation.depth,
+    correctness: evaluation.correctness ?? evaluation.keyword_coverage,
+    technicalDepth: evaluation.technical_depth ?? evaluation.depth,
+    completeness: evaluation.completeness ?? evaluation.keyword_coverage,
+    practicalReasoning:
+      evaluation.practical_reasoning ?? evaluation.specificity,
+    communication: evaluation.communication ?? evaluation.clarity,
+    confidence: evaluation.confidence ?? evaluation.clarity,
+    expectedAnswer: evaluation.expected_answer ?? "",
+    evaluationSummary: evaluation.evaluation_summary ?? "",
+    missingConcepts: evaluation.missing_concepts ?? [],
+    weaknesses: evaluation.weaknesses ?? [],
+    improvementSuggestion:
+      evaluation.improvement_suggestion ?? evaluation.improvements?.[0] ?? "",
     evidence: evaluation.evidence,
     strengths: evaluation.strengths,
     improvements: evaluation.improvements,
@@ -281,7 +427,18 @@ interface BackendResumeProfile {
   phone?: string | null;
   skills: string[];
   technologies: string[];
+  tools: string[];
+  frameworks: string[];
+  certifications: string[];
+  work_experience: ResumeExperience[];
+  internships: ResumeExperience[];
+  projects: ResumeProject[];
+  achievements: string[];
+  education: string[];
   domains: string[];
+  domain_expertise: string[];
+  semantic_tags: string[];
+  full_text_digest?: string | null;
   seniority: string;
   experience_years?: number | null;
   highlights: string[];
@@ -318,16 +475,32 @@ interface BackendEvaluation {
   clarity: number;
   specificity: number;
   depth: number;
+  correctness?: number;
+  technical_depth?: number;
+  completeness?: number;
+  practical_reasoning?: number;
+  communication?: number;
+  confidence?: number;
+  expected_answer?: string;
+  evaluation_summary?: string;
+  missing_concepts?: string[];
+  weaknesses?: string[];
+  improvement_suggestion?: string;
   evidence: string[];
   strengths: string[];
   improvements: string[];
 }
 
-interface BackendTranscriptTurn {
-  question: BackendQuestion;
-  answer: string;
-  answer_seconds: number;
-  evaluation: BackendEvaluation;
+interface BackendInterviewResult {
+  index: number;
+  question: string;
+  candidate_answer: string;
+  expected_answer: string;
+  ai_evaluation: BackendEvaluation;
+  score: number;
+  score_out_of_10: number;
+  improvement_suggestion: string;
+  answer_seconds?: number;
 }
 
 interface BackendSessionSummary {
@@ -336,13 +509,19 @@ interface BackendSessionSummary {
   candidate: string;
   duration_sec: number;
   resume_profile: BackendResumeProfile;
-  transcript: BackendTranscriptTurn[];
+  results: BackendInterviewResult[];
   insights: {
     overall_score: number;
     strengths: string[];
+    weaknesses?: string[];
     improvements: string[];
     signal: { label: string; score: number }[];
     recommendation: string;
+    technical_rating?: number;
+    communication_rating?: number;
+    problem_solving_rating?: number;
+    recommended_skill_improvements?: string[];
+    readiness_level?: string;
   };
 }
 

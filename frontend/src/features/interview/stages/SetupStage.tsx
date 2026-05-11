@@ -207,8 +207,8 @@ export function SetupStage({ onReady }: Props) {
 
         <div className="flex items-center justify-between pt-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />5 adaptive
-            questions · RAG-backed · ~15 min
+            <Sparkles className="h-3.5 w-3.5 text-primary" />7 balanced
+            questions · RAG-backed · ~20 min
           </div>
           <Button
             onClick={start}
